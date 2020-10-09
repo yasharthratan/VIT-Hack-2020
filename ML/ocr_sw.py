@@ -1,3 +1,4 @@
+from flask import Flask, request
 import pytesseract
 import os
 import cv2
@@ -5,6 +6,15 @@ import json
 import re
 from Levenshtein import distance
 from werkzeug.utils import secure_filename
+
+#starting Flask server to get image 
+app = Flask(__name__)
+
+#path to upload images
+UPLOAD_FOLDER='D:/VIT-Hack-2020/ML/UPLOADS/'
+ALLOWED_EXTENSIONS = set([ 'png', 'jpg', 'jpeg'])
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 #basic dictionary to classify the text extracted from image after OCR processing
 dic = {'category': [],
@@ -14,7 +24,6 @@ dic = {'category': [],
 
 #assigning directory for pytesseract
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\USER\AppData\Local\Tesseract-OCR\tesseract.exe'
-ALLOWED_EXTENSIONS = set([ 'png', 'jpg', 'jpeg'])
 #OCR processing the Image into a string 
 def ocr_process(img, resolution=450, page_seg_method='3'):
     txt=""
@@ -26,19 +35,25 @@ def categories(result_string,dic=dic):
     
     #Categories
     dining=re.findall('(server)|(Food)|(Dining)|(order)|(table)|(restaurant)',result_string, re.IGNORECASE)
-    apparel=re.findall('(shirt)|(pant)|(jeans)|(clothing)|(sleeve)|(men)|(ladies)',result_string,re.IGNORECASE)
+    apparel=re.findall('(shirt)|(pant)|(jeans)|(clothing)|(sleeve)|(men)|(ladies)|(accessories)',result_string,re.IGNORECASE)
     medicine=re.findall('(medical)|(pharmacy)|(hospital)|(doctor)',result_string,re.IGNORECASE)
-    accessories=re.findall('(accesories)|(earring)',result_string,re.IGNORECASE)
+    groceries=re.findall('(convinience)|(grocery)|(market)|(supermarket)',result_string,re.IGNORECASE)
+    transport =re.findall('(travels)|(transport)|(automobiles)|(car)|(bus)|(transportation)',result_string,re.IGNORECASE)
+    entertainment=re.findall('(movie)|(theatre)|(film)|(books)',result_string,re.IGNORECASE)
     
     #Appending the Categories into the dictionary
     if(len(dining)!=0):
-       dic['category'].append('Dining')
+       dic['category'].append('Food')
     elif(len(apparel)!=0):
         dic['category'].append('Apparel')
     elif(len(medicine)!=0):
         dic['category'].append('Medical')
-    elif(len(accessories)!=0):
-        dic['category'].append('Accessories')
+    elif(len(groceries)!=0):
+        dic['category'].append('Groceries')
+    elif(len(transport)!=0):
+        dic['category'].append('Transportation')
+    elif(len(entertainment)!=0):
+        dic['category'].append('Entertainment')
     return dic
 
 #Scoring - removing frequently used words with '%d'
@@ -105,21 +120,47 @@ def amount_parsser(invoice_string, regex_expression, dic=dic):
                     dic['tax'].append(tax)
         return dic                           #return updated Dictionary
 
-def INV_OCR(filename):
-    app_json=open('D:/hack1_ml/app_json.json','w', encoding ='utf-8')
-    img= cv2.imread(filename)
-    img=cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    #calling OCR function
-    ocr_result=ocr_process(img)
-    #Regular Expression for finding Total and Tax Amount
-    totalAmountRegex = {'regex_tax': '(gst[^0-9]{1,30}[0-9,]*\.\d\d)', 'regex':'(?<!Tax )(?<!Sub)(?<!Sub )(Total[^0-9]{1,30}[0-9,]*\.\d\d)'}
-    #final dictionary that contains updated values
-    result_dic=categories(ocr_result,dic)
-    result_dic = amount_parsser(ocr_result, totalAmountRegex, dic)
-    #converting dictionary into json file
-    app_json = json.dumps(result_dic, sort_keys=True)
-    return app_json
+
+#Checking allowed extensions of image
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+#Request file, process it and return json file with information
+@app.route('/', methods=['GET', 'POST'])
+def upload_file():
+    
+    if request.method == 'POST':
+       # check if the post request has the file part
+        if 'file' not in request.files:
+            print('No file part')
+            
+        file = request.files['file']
+        if file.filename == '':
+            print('No selected file')
+            
+    #Getting the Image from Server and Calling the Processing Functions
+        if file and allowed_file(file.filename):            
+            
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            #reading the image
+            img= cv2.imread(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            img=cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            #calling OCR function
+            ocr_result=ocr_process(img)
+            #Regular Expression for finding Total and Tax Amount
+            totalAmountRegex = {'regex_tax': '(gst[^0-9]{1,30}[0-9,]*\.\d\d)',
+                                 'regex':'(?<!Tax )(?<!Sub)(?<!Sub )(Total[^0-9]{1,30}[0-9,]*\.\d\d)'}
+           
+            #final dictionary that contains updated values
+            result_dic=categories(ocr_result,dic)
+            result_dic = amount_parsser(ocr_result, totalAmountRegex, dic)
+            #converting dictionary into json file
+            app_json = json.dumps(result_dic, sort_keys=True)
+            #returning json file back 
+            return app_json
 
 
-filename='D:/IP-App-Price-Tracker/src/invoice_recognition/reciept_image_dataset/1204-receipt.JPG'
-INV_OCR(filename)
+if __name__ == '__main__':
+    app.run()
