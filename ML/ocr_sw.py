@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, render_template
 import pytesseract
 import os
 import cv2
@@ -8,13 +8,20 @@ from Levenshtein import distance
 from werkzeug.utils import secure_filename
 
 #starting Flask server to get image 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='templates')
 
 #path to upload images
 UPLOAD_FOLDER='D:/VIT-Hack-2020/ML/UPLOADS/'
 ALLOWED_EXTENSIONS = set([ 'png', 'jpg', 'jpeg'])
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+@app.route("/")
+def index():
+  return render_template("index.html")
+@app.route("/about")
+def about():
+  return render_template("about.html")
 
 #basic dictionary to classify the text extracted from image after OCR processing
 dic = {'category': [],
@@ -127,7 +134,7 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 #Request file, process it and return json file with information
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/uploader', methods=['GET', 'POST'])
 def upload_file():
     
     if request.method == 'POST':
